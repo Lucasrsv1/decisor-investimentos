@@ -5,3 +5,5 @@ __pycache__
 
 public/*
 !public/index.html
+
+database/*.backup
