@@ -54,15 +54,22 @@ class Probabilities (Resource):
 
 			cur = conn.cursor()
 			cur.execute(f"""
-				SELECT {', '.join(columns)}
-				FROM dados_bayes
-				WHERE data = '{date}' AND preco_abertura <= {investment}
+				SELECT * FROM (
+					SELECT {', '.join(columns)}, (
+						SELECT AVG(volume_total_1) FROM dados_bayes
+						WHERE data BETWEEN ('{date}'::DATE - '30 days'::INTERVAL) AND '{date}'
+							AND papel = DB.papel
+					) AS volume_medio
+					FROM dados_bayes DB
+					WHERE data = '{date}' AND preco_abertura <= {investment}
+				) S
+				WHERE volume_medio > 125000;
 			""")
 
 			rows = cur.fetchall()
 			for row in rows:
 				probabilities.append(calculate_probabilities(row))
-				real_results[row[0]] = { "preco_abertura": float(row[2]) }
+				real_results[row[0]] = { "preco_abertura": float(row[2]), "volume_medio": float(row[73]) }
 				tickets.append(row[0])
 
 			cur.close()
@@ -102,4 +109,4 @@ class Probabilities (Resource):
 api.add_resource(Probabilities, '/probabilities/<date>/<investment>')
 
 if __name__ == '__main__':
-	app.run(port = '5000')
+	app.run(host = '172.21.240.1', port = '5000')

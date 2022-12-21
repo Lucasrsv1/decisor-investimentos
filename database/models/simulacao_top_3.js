@@ -38,6 +38,10 @@ function initSimulacaoTop3 (sequelize) {
 			type: DataTypes.DECIMAL(20, 17),
 			allowNull: false
 		},
+		volume_medio_1: {
+			type: DataTypes.DECIMAL(18, 2),
+			allowNull: false
+		},
 		resultado_papel_1: {
 			type: DataTypes.DECIMAL(20, 17),
 			allowNull: false
@@ -50,6 +54,10 @@ function initSimulacaoTop3 (sequelize) {
 			type: DataTypes.DECIMAL(20, 17),
 			allowNull: false
 		},
+		volume_medio_2: {
+			type: DataTypes.DECIMAL(18, 2),
+			allowNull: false
+		},
 		resultado_papel_2: {
 			type: DataTypes.DECIMAL(20, 17),
 			allowNull: false
@@ -60,6 +68,10 @@ function initSimulacaoTop3 (sequelize) {
 		},
 		alocacao_papel_3: {
 			type: DataTypes.DECIMAL(20, 17),
+			allowNull: false
+		},
+		volume_medio_3: {
+			type: DataTypes.DECIMAL(18, 2),
 			allowNull: false
 		},
 		resultado_papel_3: {

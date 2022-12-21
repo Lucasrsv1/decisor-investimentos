@@ -1,15 +1,9 @@
-// Configura variáveis de ambiente o mais cedo possível
-require("dotenv").config();
-
-// Configura estampa de tempo dos logs
-require("console-stamp")(console, { pattern: "yyyy-mm-dd HH:MM:ss.l" });
-
 const { Axios } = require("axios");
-const { Sequelize } = require("sequelize");
+const { Sequelize, Op } = require("sequelize");
 
-const models = require("./database/models");
+const models = require("../database/models");
 
-const axios = new Axios({ baseURL: "http://127.0.0.1:5000/probabilities/" });
+const axios = new Axios({ baseURL: process.env.PYTHON_SERVER + "/probabilities/" });
 const simulations = [3, 5, 7, 10];
 
 const investment = 5000;
@@ -31,32 +25,39 @@ function getFactor (level, is1) {
 	}
 }
 
-void async function () {
-	console.log("Carregando datas...");
+async function runSimulations () {
+	console.log("[SIMULATIONS] Carregando datas...");
+	const maxDate = (await models.SimulacaoTop3.max("data")) || "2001-12-31";
 	const dates = await models.DadosBayes.findAll({
 		attributes: [
 			[Sequelize.fn("DISTINCT", Sequelize.col("data")) ,"data"]
 		],
+		where: {
+			data: { [Op.gt]: maxDate }
+		},
 		order: [["data", "ASC"]],
 		raw: true
 	});
 
-	console.log(dates.length, "datas foram carregadas.\n");
+	// Não processa a simulação do último dia, pois ainda não tem os dados de resultado
+	dates.pop();
+
+	console.log("[SIMULATIONS]", dates.length, "datas foram carregadas.\n");
 
 	for (let d = 0; d < dates.length; d++) {
 		const date = dates[d].data;
-		console.log(`[${date}] Processando simulações do dia...`);
+		console.log(`[SIMULATIONS] [${date}] Processando simulações do dia...`);
 
 		try {
 			const response = await axios.get(`${date}/${investment}`);
 			if (response.status !== 200) {
-				console.log(`[${date}] Não foi possível obter as probabilidades.`);
+				console.log(`[SIMULATIONS] [${date}] Não foi possível obter as probabilidades.`);
 				continue;
 			}
 
 			const data = JSON.parse(response.data);
 			if (data.code !== 200) {
-				console.log(`[${date}] Não foi possível obter as probabilidades.`);
+				console.log(`[SIMULATIONS] [${date}] Não foi possível obter as probabilidades.`);
 				continue;
 			}
 
@@ -95,6 +96,7 @@ void async function () {
 				probability.realResult = {
 					precoAbertura: realResults[probability.ticket].preco_abertura,
 					proximoPreco: realResults[probability.ticket].proximo_preco,
+					volumeMedio: realResults[probability.ticket].volume_medio,
 					result: realResults[probability.ticket].result
 				};
 			}
@@ -105,27 +107,37 @@ void async function () {
 
 			for (const qtyTickets of simulations) {
 				const tickets = probabilities.slice(0, qtyTickets);
-				const totalPrize = tickets.reduce((s, t) => s + Math.max(0, t.prizes.invest), 0);
 
+				// Encontra o valor mínimo para tratar a alocação nos casos de prêmio esperado negativo
+				let minPrize = tickets.reduce((m, t) => Math.min(m, t.prizes.invest), Infinity);
+				if (minPrize > 0)
+					minPrize = 0;
+				else
+					minPrize = Math.abs(minPrize);
+
+				const totalPrize = tickets.reduce((s, t) => s + (minPrize + t.prizes.invest), 0);
 				const simulationResult = { data: date };
 				let resultadoTotal = 0;
 
 				for (let idx = 0; idx < qtyTickets; idx++) {
 					simulationResult[`papel_${idx + 1}`] = tickets[idx].ticket;
-					simulationResult[`alocacao_papel_${idx + 1}`] = Math.max(0, tickets[idx].prizes.invest / totalPrize);
+					simulationResult[`alocacao_papel_${idx + 1}`] = (minPrize + tickets[idx].prizes.invest) / totalPrize;
 					simulationResult[`resultado_papel_${idx + 1}`] = tickets[idx].realResult.result || 1;
+					simulationResult[`volume_medio_${idx + 1}`] = tickets[idx].realResult.volumeMedio;
 
 					resultadoTotal += simulationResult[`resultado_papel_${idx + 1}`] * simulationResult[`alocacao_papel_${idx + 1}`];
 				}
 
 				simulationResult.resultado_total = resultadoTotal;
 				await models[`SimulacaoTop${qtyTickets}`].create(simulationResult);
-				console.log(`[${date}] Simulação Top ${qtyTickets} salva.`);
+				console.log(`[SIMULATIONS] [${date}] Simulação Top ${qtyTickets} salva.`);
 			}
 		} catch (error) {
-			console.error(`[${date}] Erro ao calcular decisão.`, error);
+			console.error(`[SIMULATIONS] [${date}] Erro ao calcular decisão.`, error);
 		}
 
-		console.log(`Progresso total: ${((d + 1) / dates.length * 100).toFixed(3)}%.\n`);
+		console.log(`[SIMULATIONS] Progresso total: ${((d + 1) / dates.length * 100).toFixed(3)}%.\n`);
 	}
-}();
+}
+
+module.exports = { runSimulations };

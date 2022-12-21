@@ -8,8 +8,11 @@ const cors = require("cors");
 const path = require("path");
 const express = require("express");
 const logger = require("morgan");
+const cron = require("node-cron");
 
 const routes = require("./routes");
+const { calculateBayesForAllTickets } = require("./jobs/calculate-bayes");
+const { runSimulations } = require("./jobs/simulations");
 
 const app = express();
 app.set("port", process.env.PORT || 3000);
@@ -33,5 +36,12 @@ app.get("/*", (req, res) => {
 });
 
 app.listen(app.get("port"), () => {
-	console.log("Server is listening at ", app.get("port"));
+	console.log("[EXPRESS] Server is listening at ", app.get("port"));
 });
+
+// Calcula os dados da tabela bayes para os dias passados que estejam faltando
+cron.schedule("*/15 * * * *", calculateBayesForAllTickets);
+calculateBayesForAllTickets();
+
+// Calcula as simulações para os dias que ainda não foram calculados
+cron.schedule("*/35 * * * *", runSimulations);

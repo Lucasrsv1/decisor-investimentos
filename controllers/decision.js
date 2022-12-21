@@ -73,7 +73,7 @@ class Decision {
 
 			res.status(200).json({ prizeTable, probabilities });
 		} catch (error) {
-			console.error(error);
+			console.error("[EXPRESS]", error);
 			res.status(500).json({ message: "Erro ao calcular decisão.", error });
 		}
 	}

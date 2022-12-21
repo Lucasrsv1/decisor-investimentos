@@ -4,7 +4,7 @@ import pickle
 
 def calculate_probabilities (argv):
 	papel = argv[0]
-	params = [float(x) for x in argv[1:]]
+	params = [float(x) for x in argv[1:-1]]
 
 	data = pandas.DataFrame([params], columns = [
 		'dias_passados', 'preco_abertura', 'dias_consecutivos', 'balanco', 'variacao_preco_maximo_1',
@@ -53,6 +53,18 @@ def calculate_probabilities (argv):
 		sum += (r_05 * experimentation[f"P(D = {prediction[0]} | E = -1% <= R <= 0%)"])
 		sum += (r05 * experimentation[f"P(D = {prediction[0]} | E = 0% < R <= 1%)"])
 		sum += (r1 * experimentation[f"P(D = {prediction[0]} | E = R > 1%)"])
+
+		# Se sum for igual a zero é porque previu uma descoberta que não foi prevista durante a experimentação,
+		# logo é melhor ignorar esse papel dizendo que a probabilidade de prejuízo de 1% é de 100%
+		if sum <= 0:
+			return {
+				"ticket": papel,
+				"prediction": prediction[0],
+				"r_1": 1,
+				"r_05": 0,
+				"r05": 0,
+				"r1": 0
+			}
 
 		return {
 			"ticket": papel,

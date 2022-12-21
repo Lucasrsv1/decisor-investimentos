@@ -41,6 +41,10 @@ module.exports = {
 					type: Sequelize.DECIMAL(20, 17),
 					allowNull: false
 				};
+				columns[i][`volume_medio_${t}`] = {
+					type: Sequelize.DECIMAL(18, 2),
+					allowNull: false
+				};
 			}
 
 			await queryInterface.createTable(`simulacao_top_${qtyTickets[i]}`, columns[i]);
