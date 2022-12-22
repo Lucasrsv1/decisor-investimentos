@@ -36,6 +36,57 @@ function traduzResultado (resultado) {
 }
 
 /**
+ * Obtém os dados iniciais para calcular a tabela bayes do papel para o próximo dia
+ * @param {string} ticket Papel a ser processado
+ * @returns
+ */
+async function getInitialInfo (ticket) {
+	let variacaoDiaAnteriorInicial = 0;
+	const dadosAnteriores = {
+		balanco: 0,
+		dias_consecutivos: 0
+	};
+
+	const consultaDadosAnteriores = (await models.DadosBayes.findAll({
+		attributes: ["dias_consecutivos", "balanco", "variacao_acc_1", "sentido"],
+		where: { papel: ticket },
+		order: [["data", "DESC"]],
+		limit: 1,
+		raw: true
+	}))[0];
+
+	dadosAnteriores.balanco = Number(consultaDadosAnteriores.balanco);
+	dadosAnteriores.dias_consecutivos = Number(consultaDadosAnteriores.dias_consecutivos);
+	variacaoDiaAnteriorInicial = consultaDadosAnteriores.sentido === "VALORIZACAO" ? 1 : -1;
+
+	if (consultaDadosAnteriores.sentido === "VALORIZACAO") {
+		dadosAnteriores.balanco++;
+		if (consultaDadosAnteriores.variacao_acc_1 > 0)
+			dadosAnteriores.dias_consecutivos++;
+		else
+			dadosAnteriores.dias_consecutivos = 1;
+	} else {
+		dadosAnteriores.balanco--;
+		if (consultaDadosAnteriores.variacao_acc_1 < 0)
+			dadosAnteriores.dias_consecutivos--;
+		else
+			dadosAnteriores.dias_consecutivos = -1;
+	}
+
+	// Para calcular o histórico de variação de um dia é necessário
+	// ter `qtdDiasHist` registros anteriores a ele e 1 posterior
+	const precosAnteriores = await models.DadosBayes.findAll({
+		attributes: ["data", "preco_abertura", "variacao_acc_1"],
+		where: { papel: ticket },
+		order: [["data", "DESC"]],
+		limit: qtdDiasHist,
+		raw: true
+	});
+
+	return { variacaoDiaAnteriorInicial, dadosAnteriores, precosAnteriores };
+}
+
+/**
  * Processa os dados de um papel e gera os dados a serem gravados na tabela bayes
  * @param {string} ticket Papel a ser processado
  * @param {Array<{ data: string, fator: number }>} mudancasCotas Histórico de mudanças (desdobramentos e grupamentos) nas cotas
@@ -95,54 +146,12 @@ async function calculateBayesForTicket (ticket, mudancasCotas) {
 	// Armazena dias já calculados
 	const processado = [];
 
-	let variacaoDiaAnterior = 0;
-	const dadosAnteriores = {
-		balanco: 0,
-		dias_consecutivos: 0
-	};
-
-	const consultaDadosAnteriores = (await models.DadosBayes.findAll({
-		attributes: ["dias_consecutivos", "balanco", "sentido"],
-		where: { papel: ticket },
-		order: [["data", "DESC"]],
-		limit: 1,
-		raw: true
-	}))[0];
-
-	dadosAnteriores.balanco = Number(consultaDadosAnteriores.balanco);
-	dadosAnteriores.dias_consecutivos = Number(consultaDadosAnteriores.dias_consecutivos);
-	variacaoDiaAnterior = consultaDadosAnteriores.sentido === "VALORIZACAO" ? 1 : -1;
-
-	// Para calcular o histórico de variação de um dia é necessário
-	// ter `qtdDiasHist` registros anteriores a ele e 1 posterior
-	const precosAnteriores = await models.DadosBayes.findAll({
-		attributes: ["data", "preco_abertura", "variacao_acc_1"],
-		where: { papel: ticket },
-		order: [["data", "DESC"]],
-		limit: qtdDiasHist,
-		raw: true
-	});
+	const { variacaoDiaAnteriorInicial, dadosAnteriores, precosAnteriores } = await getInitialInfo(ticket);
+	let variacaoDiaAnterior = variacaoDiaAnteriorInicial;
 
 	// * r == 0 é o dado da última data já armazena na tabela bayes
 	for (let r = 1; r < registros.length - 1; r++) {
 		const variacaoDiaSeguinte = (registros[r + 1].preco_abertura / registros[r].preco_abertura) - 1;
-
-		// Grava dias consecutivos de valorização ou desvalorização, e balanço de dias
-		if (variacaoDiaSeguinte > 0) {
-			dadosAnteriores.balanco++;
-			if (variacaoDiaAnterior > 0)
-				dadosAnteriores.dias_consecutivos++;
-			else
-				dadosAnteriores.dias_consecutivos = 1;
-		} else {
-			dadosAnteriores.balanco--;
-			if (variacaoDiaAnterior < 0)
-				dadosAnteriores.dias_consecutivos--;
-			else
-				dadosAnteriores.dias_consecutivos = -1;
-		}
-
-		variacaoDiaAnterior = variacaoDiaSeguinte;
 
 		const diaProcessado = {
 			// Dados do dia
@@ -174,6 +183,23 @@ async function calculateBayesForTicket (ticket, mudancasCotas) {
 				diaProcessado[`variacao_${d}`] = Number(precosAnteriores[d - 1].variacao_acc_1);
 			}
 		}
+
+		// Grava dias consecutivos de valorização ou desvalorização, e balanço de dias
+		if (variacaoDiaSeguinte > 0) {
+			dadosAnteriores.balanco++;
+			if (variacaoDiaAnterior > 0)
+				dadosAnteriores.dias_consecutivos++;
+			else
+				dadosAnteriores.dias_consecutivos = 1;
+		} else {
+			dadosAnteriores.balanco--;
+			if (variacaoDiaAnterior < 0)
+				dadosAnteriores.dias_consecutivos--;
+			else
+				dadosAnteriores.dias_consecutivos = -1;
+		}
+
+		variacaoDiaAnterior = variacaoDiaSeguinte;
 
 		diaProcessado.resultado = traduzResultado(variacaoDiaSeguinte);
 		diaProcessado.sentido = variacaoDiaSeguinte > 0 ? "VALORIZACAO" : "DESVALORIZACAO";
@@ -217,7 +243,7 @@ async function calculateBayes (tickets, startDate, endDate) {
 		if (bayesData.length > 0) {
 			console.log(`[BAYES] Salvando ${bayesData.length} dados bayes no banco de dados...`);
 			await models.DadosBayes.bulkCreate(bayesData);
-			console.log("[BAYES] ${bayesData.length} dados bayes foram salvos no banco de dados.");
+			console.log(`[BAYES] ${bayesData.length} dados bayes foram salvos no banco de dados.`);
 		} else {
 			console.log("[BAYES] Nenhum dado bayes novo para salvar no banco de dados.");
 		}
@@ -238,4 +264,4 @@ async function calculateBayesForAllTickets () {
 	removeOldZips(dayjs(maxDate).subtract(1, "day"));
 }
 
-module.exports = { calculateBayes, calculateBayesForAllTickets };
+module.exports = { calculateBayes, calculateBayesForAllTickets, getInitialInfo };
