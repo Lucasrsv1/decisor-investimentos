@@ -1,4 +1,3 @@
-const { parse } = require("csv-parse/sync");
 const dayjs = require("dayjs");
 const fs = require("fs");
 const { resolve } = require("path");
@@ -7,15 +6,13 @@ const isSameOrBefore = require("dayjs/plugin/isSameOrBefore");
 dayjs.extend(isSameOrBefore);
 
 const models = require("../database/models");
-const { b3Download, removeOldZips } = require("./b3-download");
+const { b3Download, removeOldZips, loadCSV } = require("./b3-download");
 
 // Carrega a lista de papéis a serem processados
 const papeis = fs.readFileSync(resolve(__dirname, "../papeis.txt")).toString().split("\n").map(p => p.trim());
 
 // Quantidade de dias a serem mantidos no histórico de variação de cada registro
 const qtdDiasHist = 30;
-
-const csvFolder = resolve(__dirname, "raw-data", "generated-csv");
 
 /**
  * Classifica o resultado traduzindo o valor numérico na string da classe
@@ -94,54 +91,7 @@ async function getInitialInfo (ticket) {
  */
 async function calculateBayesForTicket (ticket, mudancasCotas) {
 	// Carrega os dados do papel atual
-	const registros = parse(fs.readFileSync(resolve(csvFolder, `papeis/${ticket}/dados.csv`)), {
-		columns: true,
-		delimiter: ";",
-		skip_empty_lines: true,
-		cast: true,
-		trim: true
-	});
-
-	// Ordena os dados em ordem crescente
-	registros.sort((a, b) => dayjs(a.data) - dayjs(b.data));
-
-	// Ajusta os preços considerando os centavos
-	for (const reg of registros) {
-		reg.preco_abertura = reg.preco_abertura / 100;
-		reg.preco_maximo = reg.preco_maximo / 100;
-		reg.preco_minimo = reg.preco_minimo / 100;
-		reg.preco_medio = reg.preco_medio / 100;
-		reg.preco_ultimo_negocio = reg.preco_ultimo_negocio / 100;
-		reg.volume_total = reg.volume_total / 100;
-
-		if (reg.preco_melhor_oferta_compra)
-			reg.preco_melhor_oferta_compra = reg.preco_melhor_oferta_compra / 100;
-		else
-			reg.preco_melhor_oferta_compra = reg.preco_abertura;
-
-		if (reg.preco_melhor_oferta_venda)
-			reg.preco_melhor_oferta_venda = reg.preco_melhor_oferta_venda / 100;
-		else
-			reg.preco_melhor_oferta_venda = reg.preco_abertura;
-
-		if (mudancasCotas) {
-			for (const { data, fator } of mudancasCotas) {
-				// Segue em frente se a mudança na cota foi depois do dia desse registro
-				if (dayjs(reg.data) < dayjs(data))
-					continue;
-
-				// Aplica fator de desdobramento ou grupamento das cotas
-				reg.preco_abertura *= fator;
-				reg.preco_maximo *= fator;
-				reg.preco_minimo *= fator;
-				reg.preco_medio *= fator;
-				reg.preco_ultimo_negocio *= fator;
-
-				reg.preco_melhor_oferta_compra *= fator;
-				reg.preco_melhor_oferta_venda *= fator;
-			}
-		}
-	}
+	const registros = loadCSV(`papeis/${ticket}/dados.csv`, mudancasCotas);
 
 	// Armazena dias já calculados
 	const processado = [];
@@ -236,7 +186,7 @@ async function calculateBayes (tickets, startDate, endDate) {
 			if (t % Math.floor(tickets.length / 10) === 0)
 				console.log(`[BAYES] Calculando dados bayes para os ativos... ${(t / tickets.length * 100).toFixed(2)}%`);
 
-			bayesData = bayesData.concat(await calculateBayesForTicket(tickets[t], mudancasCotas[tickets[t]]));
+			bayesData = bayesData.concat(await calculateBayesForTicket(tickets[t], mudancasCotas));
 		}
 
 		// Grava os dados no banco de dados
@@ -257,11 +207,30 @@ async function calculateBayes (tickets, startDate, endDate) {
  * @returns
  */
 async function calculateBayesForAllTickets () {
-	const maxDate = await models.DadosBayes.max("data");
-	await calculateBayes(papeis, maxDate, dayjs().format("YYYY-MM-DD"));
+	if (global.runningJobs.calculateBayesForAllTickets)
+		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' por ele já estar em execução.");
 
-	// Deleta arquivos ZIP que não são mais necessários com base no maxDate
-	removeOldZips(dayjs(maxDate).subtract(1, "day"));
+	if (global.runningJobs.getTodaysBayes)
+		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' devido ao fato de o job 'getTodaysBayes' estar em execução.");
+
+	const today = dayjs().format("YYYY-MM-DD");
+	const blockedInterval = [`${today} 09:55:00`, `${today} 10:20:00`];
+	if (dayjs().isAfter(blockedInterval[0]) && dayjs().isBefore(blockedInterval[1]))
+		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' para dar prioridade ao 'getTodaysBayes' de 09:55 às 10:20.");
+
+	global.runningJobs.calculateBayesForAllTickets = true;
+
+	try {
+		const maxDate = await models.DadosBayes.max("data");
+		await calculateBayes(papeis, maxDate, dayjs().format("YYYY-MM-DD"));
+
+		// Deleta arquivos ZIP que não são mais necessários com base no maxDate
+		removeOldZips(dayjs(maxDate).subtract(1, "day"));
+	} catch (error) {
+		console.error("[BAYES] Erro ao executar o job 'calculateBayesForAllTickets':", error);
+	}
+
+	global.runningJobs.calculateBayesForAllTickets = false;
 }
 
-module.exports = { calculateBayes, calculateBayesForAllTickets, getInitialInfo };
+module.exports = { calculateBayes, calculateBayesForAllTickets, getInitialInfo, qtdDiasHist };

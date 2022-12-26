@@ -3,6 +3,7 @@
 const configs = require("../config/config");
 
 const { initDadosBayes } = require("./dados_bayes");
+const { initDadosPreditivosBayes } = require("./dados_preditivos_bayes");
 const { initSimulacaoTop10 } = require("./simulacao_top_10");
 const { initSimulacaoTop3 } = require("./simulacao_top_3");
 const { initSimulacaoTop5 } = require("./simulacao_top_5");
@@ -15,7 +16,7 @@ if (config.logging)
 	config.logging = console.log;
 
 config.pool = {
-	max: 20,
+	max: 85,
 	min: 0,
 	idle: 5000,
 	evict: 5000
@@ -37,6 +38,7 @@ const db = {
 
 	// Carrega arquivos de modelos das tabelas
 	DadosBayes: initDadosBayes(sequelize),
+	DadosPreditivosBayes: initDadosPreditivosBayes(sequelize),
 	SimulacaoTop3: initSimulacaoTop3(sequelize),
 	SimulacaoTop5: initSimulacaoTop5(sequelize),
 	SimulacaoTop7: initSimulacaoTop7(sequelize),

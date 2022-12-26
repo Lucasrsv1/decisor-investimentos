@@ -1,5 +1,6 @@
 const dayjs = require("dayjs");
 const fs = require("fs");
+const { parse } = require("csv-parse/sync");
 const { resolve } = require("path");
 
 const isSameOrBefore = require("dayjs/plugin/isSameOrBefore");
@@ -124,9 +125,10 @@ async function generateCSVForDate (date) {
  * Faz o download dos dados da B3 e separa por papel
  * @param {string} startDate Data inicial no formato YYYY-MM-DD
  * @param {string} endDate Data final no formato YYYY-MM-DD
+ * @param {boolean} separate Define se deve separar o CSV por papel
  * @returns
  */
-async function b3Download (startDate, endDate) {
+async function b3Download (startDate, endDate, separate = true) {
 	removeTempFiles();
 
 	const everythingDownloaded = await downloadB3Data(startDate, endDate);
@@ -141,6 +143,10 @@ async function b3Download (startDate, endDate) {
 
 		await generateCSVForDate(d);
 	}
+
+	// Finaliza execução se não for para separar por papel
+	if (!separate)
+		return true;
 
 	// Separa o CSV por papel
 	await new Promise((resolve, reject) => {
@@ -159,4 +165,58 @@ async function b3Download (startDate, endDate) {
 	return true;
 }
 
-module.exports = { b3Download, removeOldZips };
+function loadCSV (filePath, mudancasCotas) {
+	// Carrega os dados do papel atual
+	const registros = parse(fs.readFileSync(resolve(csvFolder, filePath)), {
+		columns: true,
+		delimiter: ";",
+		skip_empty_lines: true,
+		cast: true,
+		trim: true
+	});
+
+	// Ordena os dados em ordem crescente
+	registros.sort((a, b) => dayjs(a.data) - dayjs(b.data));
+
+	// Ajusta os preços considerando os centavos
+	for (const reg of registros) {
+		reg.preco_abertura = reg.preco_abertura / 100;
+		reg.preco_maximo = reg.preco_maximo / 100;
+		reg.preco_minimo = reg.preco_minimo / 100;
+		reg.preco_medio = reg.preco_medio / 100;
+		reg.preco_ultimo_negocio = reg.preco_ultimo_negocio / 100;
+		reg.volume_total = reg.volume_total / 100;
+
+		if (reg.preco_melhor_oferta_compra)
+			reg.preco_melhor_oferta_compra = reg.preco_melhor_oferta_compra / 100;
+		else
+			reg.preco_melhor_oferta_compra = reg.preco_abertura;
+
+		if (reg.preco_melhor_oferta_venda)
+			reg.preco_melhor_oferta_venda = reg.preco_melhor_oferta_venda / 100;
+		else
+			reg.preco_melhor_oferta_venda = reg.preco_abertura;
+
+		if (mudancasCotas && mudancasCotas[reg.papel]) {
+			for (const { data, fator } of mudancasCotas[reg.papel]) {
+				// Segue em frente se a mudança na cota foi depois do dia desse registro
+				if (dayjs(reg.data) < dayjs(data))
+					continue;
+
+				// Aplica fator de desdobramento ou grupamento das cotas
+				reg.preco_abertura *= fator;
+				reg.preco_maximo *= fator;
+				reg.preco_minimo *= fator;
+				reg.preco_medio *= fator;
+				reg.preco_ultimo_negocio *= fator;
+
+				reg.preco_melhor_oferta_compra *= fator;
+				reg.preco_melhor_oferta_venda *= fator;
+			}
+		}
+	}
+
+	return registros;
+}
+
+module.exports = { b3Download, loadCSV, removeOldZips };

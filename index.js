@@ -13,6 +13,7 @@ const cron = require("node-cron");
 const routes = require("./routes");
 const { calculateBayesForAllTickets } = require("./jobs/calculate-bayes");
 const { runSimulations } = require("./jobs/simulations");
+const { getTodaysBayes } = require("./jobs/get-todays-bayes");
 
 const app = express();
 app.set("port", process.env.PORT || 3000);
@@ -39,9 +40,21 @@ app.listen(app.get("port"), () => {
 	console.log("[EXPRESS] Server is listening at ", app.get("port"));
 });
 
-// Calcula os dados da tabela bayes para os dias passados que estejam faltando
-cron.schedule("*/15 * * * *", calculateBayesForAllTickets);
-calculateBayesForAllTickets();
+// * Configura as flags de controle de execução dos jobs
+global.runningJobs = {
+	calculateBayesForAllTickets: false,
+	getTodaysBayes: false,
+	runSimulations: false
+};
 
-// Calcula as simulações para os dias que ainda não foram calculados
-cron.schedule("*/35 * * * *", runSimulations);
+if (process.env.RUN_JOBS === "true") {
+	// Calcula os dados da tabela bayes para os dias passados que estejam faltando
+	cron.schedule("*/15 * * * *", calculateBayesForAllTickets);
+	calculateBayesForAllTickets();
+
+	// Calcula os dados preditivos da tabela bayes para o dia atual
+	cron.schedule("1-15 10 * * 1-5", getTodaysBayes);
+
+	// Calcula as simulações para os dias que ainda não foram calculados
+	cron.schedule("*/35 * * * *", runSimulations);
+}

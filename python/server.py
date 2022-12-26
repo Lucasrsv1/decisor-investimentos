@@ -109,4 +109,4 @@ class Probabilities (Resource):
 api.add_resource(Probabilities, '/probabilities/<date>/<investment>')
 
 if __name__ == '__main__':
-	app.run(host = '172.21.240.1', port = '5000')
+	app.run(host = '172.18.16.1', port = '5000')

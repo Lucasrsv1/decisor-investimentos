@@ -9,7 +9,7 @@ module.exports = {
 		logging: false
 	},
 	linuxDevelopment: {
-		host: "172.21.240.1",
+		host: "172.18.16.1",
 		port: 5432,
 		username: "postgres",
 		password: "root",
