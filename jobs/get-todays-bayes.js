@@ -4,6 +4,9 @@ const { parse } = require("node-html-parser");
 const { readFileSync } = require("fs");
 const { resolve } = require("path");
 
+const isSameOrAfter = require("dayjs/plugin/isSameOrAfter");
+dayjs.extend(isSameOrAfter);
+
 const { getInitialInfo, qtdDiasHist } = require("./calculate-bayes");
 const models = require("../database/models");
 const { sleep } = require("../utils/sleep");
@@ -68,15 +71,22 @@ async function getTodaysPriceForTicket (ticket) {
  * Calcula as métricas da tabela bayes para serem usados na predição de um certo papel
  * @param {string} ticket Papel a ser processado
  * @param {object} registroPregaoAnterior Dados do pregão anterior para o papel em questão
+ * @param {Record<string, Array<{ data: string, fator: number }>>} mudancasCotas Registro de todas as mudanças (desdobramentos e grupamentos) de preço das cotas dos ativos
  * @returns
  */
-async function getTodaysBayesForTicket (ticket, registroPregaoAnterior) {
+async function getTodaysBayesForTicket (ticket, registroPregaoAnterior, mudancasCotas) {
 	const data = dayjs().format("YYYY-MM-DD");
-	const price = await getTodaysPriceForTicket(ticket);
+	let price = await getTodaysPriceForTicket(ticket);
 	if (!price || price <= 0 || !registroPregaoAnterior)
 		return null;
 
-	const { variacaoDiaAnteriorInicial, dadosAnteriores, precosAnteriores } = await getInitialInfo(ticket);
+	// Aplica fator de desdobramento ou grupamento das cotas
+	if (mudancasCotas[ticket] && mudancasCotas[ticket]) {
+		for (const { data, fator } of mudancasCotas[ticket])
+			price *= fator;
+	}
+
+	const { variacaoDiaAnteriorInicial, dadosAnteriores, precosAnteriores } = await getInitialInfo(ticket, registroPregaoAnterior.data);
 	const variacaoPregaoAnterior = (price / registroPregaoAnterior.preco_abertura) - 1;
 
 	if (variacaoPregaoAnterior > 0) {
@@ -145,9 +155,9 @@ async function getTodaysBayes () {
 		const maxDate = await models.DadosBayes.max("data");
 		let downloadedDate = null;
 		let everythingDownloaded = false;
-		for (let d = dayjs(maxDate).add(1, "day"); d.isSameOrBefore(dayjs(), "date") && !everythingDownloaded; d = d.add(1, "day")) {
+		for (let d = dayjs().subtract(1, "day"); d.isSameOrAfter(maxDate, "date") && !everythingDownloaded; d = d.subtract(1, "day")) {
 			downloadedDate = d.clone();
-			everythingDownloaded = await b3Download(d.format("YYYY-MM-DD"), d.format("YYYY-MM-DD"), false);
+			everythingDownloaded = await b3Download(d.format("YYYY-MM-DD"), d.format("YYYY-MM-DD"), false, true);
 		}
 
 		// Se não conseguiu baixar os dados do último pregão, aborta o procedimento
@@ -171,7 +181,7 @@ async function getTodaysBayes () {
 			if (!filteredTickets[t].length) continue;
 
 			promises.push(
-				getTodaysBayesForTicket(filteredTickets[t], registrosPregaoAnterior.find(r => r.papel === filteredTickets[t])).then(row => {
+				getTodaysBayesForTicket(filteredTickets[t], registrosPregaoAnterior.find(r => r.papel === filteredTickets[t]), mudancasCotas).then(row => {
 					if (row) rows.push(row);
 				})
 			);

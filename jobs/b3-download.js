@@ -126,9 +126,10 @@ async function generateCSVForDate (date) {
  * @param {string} startDate Data inicial no formato YYYY-MM-DD
  * @param {string} endDate Data final no formato YYYY-MM-DD
  * @param {boolean} separate Define se deve separar o CSV por papel
+ * @param {boolean} ensureFileExists Garante que só retornará verdadeiro se os arquivos de todos os dias do intervalo realmente existirem no HD
  * @returns
  */
-async function b3Download (startDate, endDate, separate = true) {
+async function b3Download (startDate, endDate, separate = true, ensureFileExists = false) {
 	removeTempFiles();
 
 	const everythingDownloaded = await downloadB3Data(startDate, endDate);
@@ -136,10 +137,13 @@ async function b3Download (startDate, endDate, separate = true) {
 		return false;
 
 	// Gera o CSV para todas as datas pendentes
+	let inexistentFiles = false;
 	for (let d = dayjs(startDate); d.isSameOrBefore(dayjs().format("YYYY-MM-DD")); d = d.add(1, "day")) {
 		// Ignora dia que não teve pregão
-		if (!fs.existsSync(resolve(rawDataFolder, `COTAHIST_D${d.format("DDMMYYYY")}.ZIP`)))
+		if (!fs.existsSync(resolve(rawDataFolder, `COTAHIST_D${d.format("DDMMYYYY")}.ZIP`))) {
+			inexistentFiles = true;
 			continue;
+		}
 
 		await generateCSVForDate(d);
 	}
@@ -147,6 +151,10 @@ async function b3Download (startDate, endDate, separate = true) {
 	// Finaliza execução se não for para separar por papel
 	if (!separate)
 		return true;
+
+	// Finaliza execução se os arquivos eram necessários para todos os dias
+	if (ensureFileExists && inexistentFiles)
+		return false;
 
 	// Separa o CSV por papel
 	await new Promise((resolve, reject) => {
@@ -165,6 +173,12 @@ async function b3Download (startDate, endDate, separate = true) {
 	return true;
 }
 
+/**
+ * Carrega um arquivo CSV de dados da B3
+ * @param {string} filePath Caminho para o arquivo CSV a ser carregado
+ * @param {Record<string, Array<{ data: string, fator: number }>>} mudancasCotas Registro de todas as mudanças (desdobramentos e grupamentos) de preço das cotas dos ativos
+ * @returns
+ */
 function loadCSV (filePath, mudancasCotas) {
 	// Carrega os dados do papel atual
 	const registros = parse(fs.readFileSync(resolve(csvFolder, filePath)), {

@@ -53,7 +53,7 @@ if (process.env.RUN_JOBS === "true") {
 	calculateBayesForAllTickets();
 
 	// Calcula os dados preditivos da tabela bayes para o dia atual
-	cron.schedule("1-15 10 * * 1-5", getTodaysBayes);
+	cron.schedule("1-40 10 * * 1-5", getTodaysBayes);
 
 	// Calcula as simulações para os dias que ainda não foram calculados
 	cron.schedule("*/35 * * * *", runSimulations);

@@ -1,5 +1,6 @@
 const dayjs = require("dayjs");
 const fs = require("fs");
+const { Op } = require("sequelize");
 const { resolve } = require("path");
 
 const isSameOrBefore = require("dayjs/plugin/isSameOrBefore");
@@ -35,9 +36,10 @@ function traduzResultado (resultado) {
 /**
  * Obtém os dados iniciais para calcular a tabela bayes do papel para o próximo dia
  * @param {string} ticket Papel a ser processado
+ * @param {string} previousDate Data do registro anterior carregado diretamente do arquivo da B3
  * @returns
  */
-async function getInitialInfo (ticket) {
+async function getInitialInfo (ticket, previousDate) {
 	let variacaoDiaAnteriorInicial = 0;
 	const dadosAnteriores = {
 		balanco: 0,
@@ -74,7 +76,10 @@ async function getInitialInfo (ticket) {
 	// ter `qtdDiasHist` registros anteriores a ele e 1 posterior
 	const precosAnteriores = await models.DadosBayes.findAll({
 		attributes: ["data", "preco_abertura", "variacao_acc_1"],
-		where: { papel: ticket },
+		where: {
+			papel: ticket,
+			data: { [Op.lt]: previousDate }
+		},
 		order: [["data", "DESC"]],
 		limit: qtdDiasHist,
 		raw: true
@@ -86,7 +91,7 @@ async function getInitialInfo (ticket) {
 /**
  * Processa os dados de um papel e gera os dados a serem gravados na tabela bayes
  * @param {string} ticket Papel a ser processado
- * @param {Array<{ data: string, fator: number }>} mudancasCotas Histórico de mudanças (desdobramentos e grupamentos) nas cotas
+ * @param {Record<string, Array<{ data: string, fator: number }>>} mudancasCotas Registro de todas as mudanças (desdobramentos e grupamentos) de preço das cotas dos ativos
  * @returns
  */
 async function calculateBayesForTicket (ticket, mudancasCotas) {
@@ -214,9 +219,9 @@ async function calculateBayesForAllTickets () {
 		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' devido ao fato de o job 'getTodaysBayes' estar em execução.");
 
 	const today = dayjs().format("YYYY-MM-DD");
-	const blockedInterval = [`${today} 09:55:00`, `${today} 10:20:00`];
+	const blockedInterval = [`${today} 09:55:00`, `${today} 10:41:00`];
 	if (dayjs().isAfter(blockedInterval[0]) && dayjs().isBefore(blockedInterval[1]))
-		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' para dar prioridade ao 'getTodaysBayes' de 09:55 às 10:20.");
+		return console.warn("[BAYES] Recusada a execução do job 'calculateBayesForAllTickets' para dar prioridade ao 'getTodaysBayes' de 09:55 às 10:41.");
 
 	global.runningJobs.calculateBayesForAllTickets = true;
 
