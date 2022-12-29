@@ -78,7 +78,7 @@ async function getInitialInfo (ticket, previousDate) {
 		attributes: ["data", "preco_abertura", "variacao_acc_1"],
 		where: {
 			papel: ticket,
-			data: { [Op.lt]: previousDate }
+			...( previousDate ? { data: { [Op.lt]: previousDate } } : {})
 		},
 		order: [["data", "DESC"]],
 		limit: qtdDiasHist,
