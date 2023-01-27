@@ -34,6 +34,22 @@ function traduzResultado (resultado) {
 }
 
 /**
+ * Valida se os dados processados para um certo dia são válidos ou se possuem alguma inconsistência
+ * @param {object} data Dados processados para um certo dia
+ * @returns
+ */
+function isValid (data) {
+	const ignore = ["data", "papel", "resultado", "sentido"];
+	const keys = Object.keys(data).filter(k => !ignore.includes(k));
+	for (const k of keys) {
+		if (isNaN(data[k]) || Math.abs(data[k]) === Infinity)
+			return false;
+	}
+
+	return true;
+}
+
+/**
  * Obtém os dados iniciais para calcular a tabela bayes do papel para o próximo dia
  * @param {string} ticket Papel a ser processado
  * @param {string} previousDate Data do registro anterior carregado diretamente do arquivo da B3
@@ -47,8 +63,11 @@ async function getInitialInfo (ticket, previousDate) {
 	};
 
 	const consultaDadosAnteriores = (await models.DadosBayes.findAll({
-		attributes: ["dias_consecutivos", "balanco", "variacao_acc_1", "sentido"],
-		where: { papel: ticket },
+		attributes: ["data", "dias_consecutivos", "balanco", "variacao_acc_1", "sentido"],
+		where: {
+			papel: ticket,
+			...( previousDate ? { data: { [Op.lt]: previousDate } } : {})
+		},
 		order: [["data", "DESC"]],
 		limit: 1,
 		raw: true
@@ -158,7 +177,11 @@ async function calculateBayesForTicket (ticket, mudancasCotas) {
 
 		diaProcessado.resultado = traduzResultado(variacaoDiaSeguinte);
 		diaProcessado.sentido = variacaoDiaSeguinte > 0 ? "VALORIZACAO" : "DESVALORIZACAO";
-		processado.push(diaProcessado);
+
+		if (!isValid(diaProcessado))
+			console.warn(`[BAYES] Os dados do ticket ${ticket} para o dia ${diaProcessado.data} são inválidos. Dados ignorados:`, diaProcessado);
+		else
+			processado.push(diaProcessado);
 	}
 
 	return processado;

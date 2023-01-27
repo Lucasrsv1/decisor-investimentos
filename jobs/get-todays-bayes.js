@@ -1,5 +1,6 @@
 const { Axios } = require("axios");
 const dayjs = require("dayjs");
+const { Op } = require("sequelize");
 const { parse } = require("node-html-parser");
 const { readFileSync } = require("fs");
 const { resolve } = require("path");
@@ -152,7 +153,12 @@ async function getTodaysBayes () {
 		const mudancasCotas = JSON.parse(readFileSync(resolve(__dirname, "../mudancas-cotas.json")));
 
 		// Obtém dados do pregão anterior
-		const maxDate = await models.DadosBayes.max("data");
+		const maxDate = await models.DadosBayes.max("data", {
+			where: {
+				data: { [Op.lt]: dayjs().format("YYYY-MM-DD") }
+			}
+		});
+
 		let downloadedDate = null;
 		let everythingDownloaded = false;
 		for (let d = dayjs().subtract(1, "day"); d.isSameOrAfter(maxDate, "date") && !everythingDownloaded; d = d.subtract(1, "day")) {

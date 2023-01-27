@@ -282,7 +282,6 @@ ESGD11
 MDNE3       
 OULG11      
 HGFF11      
-AMER3F      
 RZTR11      
 XPPR11      
 KISU11      
@@ -503,7 +502,6 @@ VIFI11
 CEDO4       
 SEQL3       
 BSLI4       
-AMER3       
 GOAU4       
 UGPA3       
 KNSC11      
