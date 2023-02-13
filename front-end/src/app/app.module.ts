@@ -2,6 +2,7 @@ import { BrowserModule } from "@angular/platform-browser";
 import localePt from "@angular/common/locales/pt";
 import { registerLocaleData } from "@angular/common";
 import { FormsModule, ReactiveFormsModule } from "@angular/forms";
+import { HTTP_INTERCEPTORS, HttpClientModule } from "@angular/common/http";
 import { LOCALE_ID, NgModule } from "@angular/core";
 
 import { AccordionModule } from "ngx-bootstrap/accordion";
@@ -18,7 +19,8 @@ import { AppRoutingModule } from "./app-routing.module";
 import { ComponentsModule } from "./components/components.module";
 
 import { HomeComponent } from "./pages/home/home.component";
-import { HttpClientModule } from "@angular/common/http";
+import { LoginPageComponent } from "./pages/login/login-page.component";
+import { RequestInterceptor } from "./services/authentication/request.interceptor";
 
 defineLocale("pt-br", ptBrLocale);
 registerLocaleData(localePt);
@@ -38,7 +40,8 @@ const currencyMaskConfig: CurrencyMaskConfig = {
 @NgModule({
 	declarations: [
 		AppComponent,
-		HomeComponent
+		HomeComponent,
+		LoginPageComponent
 	],
 	imports: [
 		BrowserModule,
@@ -55,10 +58,10 @@ const currencyMaskConfig: CurrencyMaskConfig = {
 		BrowserAnimationsModule,
 		BsDatepickerModule.forRoot()
 	],
-	providers: [{
-		provide: LOCALE_ID,
-		useValue: "pt-BR"
-	}],
+	providers: [
+		{ provide: HTTP_INTERCEPTORS, useClass: RequestInterceptor, multi: true },
+		{ provide: LOCALE_ID, useValue: "pt-BR" }
+	],
 	bootstrap: [AppComponent]
 })
 export class AppModule { }

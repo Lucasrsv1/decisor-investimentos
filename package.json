@@ -5,13 +5,13 @@
 	"main": "index.js",
 	"scripts": {
 		"start": "nodemon index.js",
+		"front": "cd front-end && npm start",
 		"test-py": "test-py.bat",
 		"py-server": "py ./python/server.py",
 		"db_create": "sequelize db:create",
 		"db_drop": "sequelize db:drop",
 		"db_migrate": "sequelize db:migrate",
-		"db_populate": "node populate-db.js",
-		"simulations": "node simulations.js"
+		"db_populate": "node populate-db.js"
 	},
 	"author": "",
 	"license": "ISC",
@@ -24,6 +24,8 @@
 		"dotenv": "^16.0.3",
 		"express": "^4.18.2",
 		"express-validator": "^6.14.2",
+		"js-sha512": "^0.8.0",
+		"jsonwebtoken": "^9.0.0",
 		"morgan": "^1.10.0",
 		"node-cron": "^3.0.2",
 		"node-html-parser": "^6.1.4",

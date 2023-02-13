@@ -4,6 +4,7 @@ import { FormBuilder, FormGroup, Validators } from "@angular/forms";
 import { BlockUI, NgBlockUI } from "ng-block-ui";
 import { BsDatepickerConfig, BsLocaleService } from "ngx-bootstrap/datepicker";
 
+import * as dayjs from "dayjs";
 import { Subscription } from "rxjs";
 
 import { ISimulation } from "src/app/models/simulation";
@@ -43,8 +44,15 @@ export class HomeComponent implements OnDestroy {
 		private readonly decisionService: DecisionService,
 		private readonly utils: UtilsService
 	) {
+		let defaultDate = dayjs();
+		for (let days = 3; days > 0; days--) {
+			defaultDate = defaultDate.subtract(1, "day");
+			while ([0, 6].includes(defaultDate.day()))
+				defaultDate = defaultDate.subtract(1, "day");
+		}
+
 		this.form = this.formBuilder.group({
-			date: [new Date(2022, 10, 23), Validators.required],
+			date: [defaultDate.startOf("date").toDate(), Validators.required],
 			investment: [1000, [Validators.required, Validators.min(1)]],
 			riskAversion: [3, Validators.required],
 			greed: [1, Validators.required]

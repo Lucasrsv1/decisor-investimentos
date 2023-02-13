@@ -1,9 +1,10 @@
 const { Axios } = require("axios");
 const { param } = require("express-validator");
 
+const { ensureAuthorized } = require("./login");
 const { isRequestInvalid } = require("../utils/http-validation");
 
-const axios = new Axios({ baseURL: "http://127.0.0.1:5000/probabilities/" });
+const axios = new Axios({ baseURL: process.env.PYTHON_SERVER + "/probabilities/" });
 
 class Decision {
 	/**
@@ -80,6 +81,7 @@ class Decision {
 
 	get validations () {
 		return [
+			ensureAuthorized,
 			param("date").isDate({ format: "YYYY-MM-DD" })
 				.withMessage("Data inválida. Padrão requerido: YYYY-MM-DD."),
 			param("investment").isNumeric({ min: 1 })
